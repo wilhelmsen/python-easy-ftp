@@ -15,9 +15,15 @@ LOG = logging.getLogger(__name__)
 
 class FtpConnection:
     def __init__(self, ftp_remote_address, username=None, password=None ):
-        self.host, self.root_path = ftp_connection.split_ftp_host_and_path( ftp_remote_address )
+        """
+        The constructor of the ftp connection.
+        Automatically logs in and changes the working directory to the ftp path.
+        """
+        # TODO: "root_path" is probably a incorrect name. Should be renamed to something a bit more appropriate.
+        self.host, self.root_path = FtpConnection.split_ftp_host_and_path( ftp_remote_address )
         self.username = username
         self.password = password
+
         LOG.debug( "Logging in to %s."%( self.host ) )
         self.ftp = ftplib.FTP( self.host )
         self.login()
@@ -27,6 +33,10 @@ class FtpConnection:
 
 
     def login(self):
+        """
+        Tries to login to the ftp server.
+        Using credentials if given.
+        """
         if self.username and self.password:
             LOG.debug( "Logging in using credentials." )
             self.ftp.login( self.username, self.password )
@@ -36,6 +46,12 @@ class FtpConnection:
 
 
     def download_file( self, remote_file_address, destination_filename ):
+        """
+        Tries to download a file from the ftp host twice using ftplib. If that fails, tries using urllib2.
+        In total 3 attemts. No timeout.
+        """
+
+        # TODO: Add timeout.
         try:
             LOG.debug( "Downloading '%s' using ftplib to '%s'"%( remote_file_address, destination_filename ) )
             try:
@@ -52,10 +68,6 @@ class FtpConnection:
         except:
             try:
                 LOG.error( "Downloading file '%s' using ftplib failed. Trying using urllib2."%( remote_file_address ) )
-                if os.path.isfile( destination_filename ):
-                    LOG.error( "The file was partially downloaded. Remove it first, as it may not be complete.: '%s'."%( destination_filename ) )
-                    os.remove( destination_filename )
-                    LOG.error( "File removed: '%s'."%( destination_filename) )
 
                 LOG.debug( "Building remote url..." )
                 if remote_file_address.startswith( "ftp://" ):
@@ -90,12 +102,20 @@ class FtpConnection:
                 return True
             else:
                 LOG.warning( "'%s' had size zero... will be removed so that it can be downloaded later."%( destination_filename ) )
+                # TODO: Check that the filesizes are different both remotely and locally before deleting.
                 os.remove( destination_filename )
         return False
                        
 
     @staticmethod
     def split_ftp_host_and_path( ftp_remote_address ):
+        """
+        Splits the ftp address into host and path.
+        
+        What it does is remove the "ftp://" in the beginning of the address, and
+        then split the string on the first "/", and then add "/" to the last part,
+        to make it clear that it is the root path on the host.
+        """
         if ftp_remote_address.startswith("ftp://"):
             LOG.debug( "Removing ftp:// from remote address." )
             ftp_remote_address = ftp_remote_address.replace( "ftp://", "", 1 )
@@ -109,12 +129,28 @@ class FtpConnection:
         return remote_host, root_path
 
     def __enter__( self ):
+        """
+        This function is called when using with statements.
+
+        Example::
+            with FtpConnection( <ftp_address> ) as ftp:
+                print ftp.get_files()
+
+        Here, the "ftp" becomes the "self".
+        """
         return self
 
     def __exit__(self, type, value, traceback):
+        """
+        This function is the one called when exiting the scope of the
+        with statement. Se e.g. __enter__.
+        """
         self.close()
     
     def close( self ):
+        """
+        Tries to close down the ftp connection in a polite way.
+        """
         try:
             self.ftp.quit()
             self.ftp.close()
@@ -123,18 +159,36 @@ class FtpConnection:
             LOG.warning( "Exception raised when closing ftp connection." )
 
     def get_directories( self, path=None ):
+        """
+        Gets a list of directories for a specific path. If path is not given,
+        the directories in the root path of the full ftp address is returned.
+        """
         return self.get_entries_starting_with( "d", path )
 
     def get_filenames( self, path=None ):
+        """
+        Gets a list of files for a specific path. If path is not given,
+        the files in the root path of the full ftp address is returned.
+        """
         return self.get_entries_starting_with( "-", path )
 
     def get_links( self, path=None ):
+        """
+        Gets a list of links for a specific path. If path is not given,
+        the links in the root path of the full ftp address is returned.
+        """
         return self.get_entries_starting_with( "l", path )
 
     def get_entries_starting_with( self, startswith, path = None ):
+        """
+        Parses the list content string and returns a list of all the entries starting with
+        "startswith".
+        """
         entries = []
         contents = self.list_contents( path )
         for content in contents:
+            # TODO: Return an object containing some more information about the files / directories / links.
+            # There is more info in the string, which e.g. could be parsed into an object.
             if content.startswith( startswith ):
                 entries.append( content.split(" ")[-1] )
         return entries
@@ -155,6 +209,12 @@ class FtpConnection:
             return self._list_contents( path )
 
     def _list_contents( self, path=None ):
+        """
+        Changes the directory to the path, if given, and list all the contents in that directory. Then automatically
+        changes the working directory back to the ftp address root.
+
+        Returns a list of lines that the ftp server returns.
+        """
         if path:
             LOG.debug("Changing path to %s"%(path))
             self.ftp.cwd( path )
@@ -165,11 +225,6 @@ class FtpConnection:
         
 
 if __name__ == "__main__":
-
-    # Uncomment if root privileges are required.
-    # if os.geteuid() != 0:
-    #    sys.exit("Must run as sudo!")
-
     try:
         import argparse
     except Exception, e:
@@ -179,7 +234,6 @@ if __name__ == "__main__":
         raise e
 
     def string2date( date_string ):
-        # argparse.ArgumentTypeError()
         return datetime.datetime.strptime( date_string, '%Y-%m-%d' ).date()
 
     def directory( dir_path ):
@@ -190,7 +244,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser( description='Connect to an ftp server and list the files, directories and links in the directory.' )
     parser.add_argument( "remote_source_address"
                          , type=str
-                         , help='Remote source adress.'
+                         , help='Remote source adress, e.g. ftp://example.com/some/nice/path'
                          )
     parser.add_argument( '-u', '--username'
                          , type=str
@@ -216,11 +270,12 @@ if __name__ == "__main__":
     # Output what is in the args variable.
     LOG.debug(args)
 
-    with ftp_connection( args.remote_source_address, args.username, args.password ) as ftp:
-        directories = ftp.get_directories( ftp.root_path )
-        
+    with FtpConnection( args.remote_source_address, args.username, args.password ) as ftp:
+        directories = ftp.get_directories()
         files = ftp.get_filenames()
-        for file in files:
-            print file
-        print len(files)
-        print ftp.get_links( ftp.root_path )
+        links = ftp.get_links()
+
+        print "Remote root directory:", ftp.root_path
+        print "Number of directories:", len( directories )
+        print "Number of files:", len(files)
+        print "Number of links:", len(links)
