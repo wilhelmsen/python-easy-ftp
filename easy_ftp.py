@@ -32,7 +32,18 @@ class FtpConnection:
         self.ftp.cwd( self.root_path )
 
 
-    def login(self):
+    def login( self ):
+        try:
+            LOG.debug( "Logging in." )
+            self._login()
+        except:
+            LOG.error( "Log in failed. Trying again." )
+            LOG.error( sys.exc_info()[0] )
+            self._login()
+            LOG.error( "Login OK.")
+
+        
+    def _login( self ):
         """
         Tries to login to the ftp server.
         Using credentials if given.
@@ -43,7 +54,7 @@ class FtpConnection:
         else:
             LOG.debug( "Logging in to ftp server." )
             self.ftp.login()
-
+        
 
     def download_file( self, remote_file_address, destination_filename ):
         """
