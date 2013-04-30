@@ -5,7 +5,7 @@ Make it easier to access ftp server content from python.
 
 WARNING:
 --------
-The code has not been fully tested!
+The code has not really been tested!
 
 HOW TO USE
 ----------
@@ -36,13 +36,13 @@ Also, these should be the same::
     import easy_ftp
 
     with easy_ftp.FtpConnection( "ftp://<ftp host name>/ftp/root/path" ) as ftp:
-        ftp.get_filenames( "/ftp/root/path/with/fish/file/" )
-        ftp.get_filenames( "with/fish/file/" )
+    	 filenames_1 = ftp.get_filenames( "/ftp/root/path/with/fish/file/" )
+         filenames_2 = ftp.get_filenames( "with/fish/file/" )
 
 
 TODO list
 ---------
-At lot need to be done, but some of the most obvious is:
+A lot needs to be done. Some of the most obvious are:
 
 - Add file sizes from remote files / directories / links.
 - Add other file attributes to the files / directories / links.
