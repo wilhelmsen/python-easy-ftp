@@ -340,7 +340,11 @@ class FtpConnection:
         Gets a list of files for a specific path. If path is not given,
         the files in the root path of the full ftp address is returned.
         """
-        return self.get_entries_starting_with( "-", path, timeout_seconds = timeout_seconds )
+        filenames = self.get_entries_starting_with( "-", path, timeout_seconds = timeout_seconds )
+        for item_to_remove in [".", ".."]:
+            while item_to_remove in filenames:
+                filenames.remove( item_to_remove )
+        return filenames
 
     def get_links( self, path=None, timeout_seconds = None ):
         """
