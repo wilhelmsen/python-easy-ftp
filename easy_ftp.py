@@ -140,7 +140,7 @@ class FtpConnection:
     def setup( self ):
         # Setting up timeout and so. This is where the work is done.
         @retry( self._number_of_retries )
-        @timeout( self._timeout_seconds )
+        @timeout( self._timeout_seconds + self._cooldown_get_period() )
         def _setup( self ):
             LOG.debug( "Setting up %s."%( self.host ) )
             self.ftp =  ftplib.FTP( self.host )
@@ -155,6 +155,9 @@ class FtpConnection:
             _setup( self )
             
 
+    def _cooldown_get_period( self ):
+        return int( time.mktime(datetime.datetime.now().timetuple()) ) - self._cooldown_timestamp
+
     def _cooldown( self ):
         """
         Internal method.
@@ -166,15 +169,12 @@ class FtpConnection:
         for 1 second before the next download is made.
         """
         if self._cooldown_seconds:
-            LOG.debug( "Cooling down..." )
             if self._cooldown_timestamp:
-                time_since_last_action_seconds = int( time.mktime(datetime.datetime.now().timetuple()) ) - self._cooldown_timestamp
+                time_since_last_action_seconds = self._cooldown_get_period()
                 sleeptime_seconds = self._cooldown_seconds - time_since_last_action_seconds
                 if sleeptime_seconds > 0:
-                    LOG.debug( "...for %i second(s)"%(sleeptime_seconds) ) 
+                    LOG.debug( "Cooling down for %i second(s)"%(sleeptime_seconds) ) 
                     time.sleep( sleeptime_seconds  )
-                else:
-                    LOG.debug( "...for 0 seconds..." )
 
 
     def _cooldown_set_timestamp( self ):
@@ -198,7 +198,7 @@ class FtpConnection:
             timeout_seconds = self._timeout_seconds
 
         @retry( self._number_of_retries )
-        @timeout( timeout_seconds )
+        @timeout( timeout_seconds + self._cooldown_get_period()  )
         def _login( self, LOG ):
             """
             Internal function to log in to the ftp-server.
@@ -264,7 +264,7 @@ class FtpConnection:
         assert( timeout_seconds > 0 )
 
         @retry( self._number_of_retries )
-        @timeout( timeout_seconds )
+        @timeout( timeout_seconds + self._cooldown_get_period() )
         def download_using_ftplib( self, remote_file_address, destination_filename, LOG ):
             LOG.debug( "Using ftplib: Downloading '%s' to '%s'."%( remote_file_address, destination_filename ) )
             destination_filename_tmp = "%s.tmp"%( destination_filename )
@@ -308,7 +308,7 @@ class FtpConnection:
             return False
 
         @retry( self._number_of_retries )
-        @timeout( timeout_seconds )
+        @timeout( timeout_seconds + self._cooldown_get_period() )
         def download_using_urllib2( self, remote_file_address, destination_filename, LOG ):
             LOG.debug( "Using urllib2: Downloading '%s' to '%s'."%( remote_file_address, destination_filename ) )
             LOG.debug( "Building remote url..." )
@@ -516,7 +516,7 @@ class FtpConnection:
             timeout_seconds = self.timeout_seconds
 
         @retry( self._number_of_retries )
-        @timeout( timeout_seconds )
+        @timeout( timeout_seconds + self._cooldown_get_period() )
         def _list_contents( self, path=None ):
             """
             Changes the directory to the path, if given, and list all the contents in that directory. Then automatically
