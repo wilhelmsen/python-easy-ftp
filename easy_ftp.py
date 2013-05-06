@@ -36,7 +36,7 @@ def timeout(seconds):
     An alarm is set. If the function does not finish before the alarm,
     a TimeoutError is raised. Else, the alarm is cancelled.
     """
-    LOG.debug( "Timeout decorator." )
+    LOG.debug( "Timeout: Timeout decorator." )
 
     def wrapper(function):
         # return function if we are running with zero timeout
@@ -49,14 +49,14 @@ def timeout(seconds):
 
         def inner(*args, **kwargs):
             """Inner function that sets the alarm."""
-            LOG.debug( "Setting alarm, %i second(s)."%( seconds ))
+            LOG.debug( "Timeout: Setting alarm, %i second(s)."%( seconds ))
             signal.signal( signal.SIGALRM, _handle_timeout )
             signal.alarm( seconds )
             try:
                 LOG.debug( "Timeout: Calling function." )
                 result = function( *args, **kwargs )
             except Exception, e:
-                LOG.error( "Raising timeouterror: %s"%(str(e)) )
+                LOG.error( "Timeout: Raising timeouterror: %s"%(str(e)) )
                 raise e
             finally:
                 LOG.debug( "Timeout: Alarm cancelled." )
@@ -72,37 +72,37 @@ def retry(number_of_retries, sleep_factor = 1):
     Retries the specified number of times.
     If the limit is reached, a RetryError is raised.
     """
-    LOG.debug( "Retry decorator." )
+    LOG.debug( "Retry: Retry decorator." )
     assert( sleep_factor >= 0 )
     
     def wrapper(function):
         # Just return function if no retries.
         if number_of_retries in (None, 0): 
-            LOG.debug( "Not going to retry." )
+            LOG.debug( "Retry: Not going to retry." )
             return function
 
         # Does the loop.
         def inner(*args, **kwargs):
             counter = 1
             while counter <= number_of_retries:
-                LOG.debug("Attempt %i/%i."%( counter, number_of_retries))
+                LOG.debug("Retry: Attempt %i/%i."%( counter, number_of_retries))
                 try:
-                    LOG.debug("Calling")
+                    LOG.debug("Retry: Calling")
                     result = function( *args, **kwargs )
                     return result
                 except socket.error, e:
                     # Most likely because the session has timed out, or something alike.
                     # The solution seem to be to relogin. No need to continue.
-                    LOG.debug( "Socket error, %s. Will probably need to relogin. Will not retry."%( str(e) )  )
+                    LOG.debug( "Socket error, %s. Will probably need to relogin. Will not retry using the decorator."%( str(e) ) )
                     raise e
                 except Exception, e:
-                    LOG.error( "Error in retry: %s."%( str( e )) )
+                    LOG.error( "Retry: Error in retry: %s."%(str(e)) )
                     counter += 1
                     if sleep_factor > 0:
                         sleeptime = sleep_factor*counter
-                        LOG.debug( "Sleeping before retrying: %i second(s)."%( sleeptime ))
+                        LOG.debug( "Retry: Sleeping before retrying: %i second(s)."%( sleeptime ))
                         time.sleep( sleeptime )
-            raise RetryError( "Failed %i times."%( number_of_retries ) )
+            raise RetryError( "Retry: Failed %i times."%( number_of_retries ) )
         return inner
     return wrapper
 
@@ -152,6 +152,8 @@ class FtpConnection:
             _setup( self )
         except socket.error, e:
             LOG.error( e )
+            LOG.error( "Will sleep for 60 seconds and try again." )
+            time.sleep( 60 )
             _setup( self )
             
 
@@ -279,7 +281,7 @@ class FtpConnection:
 
             self._cooldown()
             try:
-                LOG.debug( "Trying downloading: '%s'."%( remote_file_address  ))
+                LOG.debug( "Trying to download: '%s'."%( remote_file_address  ))
                 with open( destination_filename_tmp, 'wb' ) as local_file:
                     self.ftp.retrbinary( "RETR %s"%( remote_file_address ), local_file.write  )
             except Exception, e:
@@ -302,7 +304,6 @@ class FtpConnection:
                     LOG.info( "Ftplib: File '%s' saved."%( destination_filename ))
                     LOG.info( "*"*50 )
                     LOG.info( "" )
-
                     return True
             LOG.warning( "Failed to download '%s'."%( destination_filename_tmp ) )
             return False
@@ -375,13 +376,23 @@ class FtpConnection:
             if download_using_ftplib( self, remote_file_address, destination_filename, LOG ):
                 return True
         except socket.error, e:
+            # If the error is a socket error, the retry decorator will not retry, because the connection
+            # most likely need to be reestablished. Therefore, recursively, retry to download the file, which 
+            # includes setting up the connection again.
+            try:
+                LOG.debug( "Sleeping for %i seconds."%( timeout_seconds * 5 ) )
+                time.sleep( timeout_seconds * 5 )
+                LOG.debug( "Recursively trying to download the file." )
+                return self.download_file( remote_file_address, destination_filename, timeout_seconds=timeout_seconds )
+            except Exception, e:
+                # We end up here, if the exception is not a socket.error. Else, retry recursively.
+                raise e
+        except Exception, e:
+            LOG.error( e )
             LOG.error( "Failed downloading '%s' using ftplib. Trying with urllib2."%( remote_file_address ) )
 
-        try: 
-            if download_using_urllib2( self, remote_file_address, destination_filename, LOG ):
-                return True
-        except socket.error, e:
-            LOG.error( "Failed downloading '%s' using urllib."%( remote_file_address ) )
+        if download_using_urllib2( self, remote_file_address, destination_filename, LOG ):
+            return True
 
         LOG.warning( "*"*50 )
         LOG.error( "FAILED: Downloading '%s' failed permanentely."%( remote_file_address ) )
