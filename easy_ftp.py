@@ -156,7 +156,9 @@ class FtpConnection:
             
 
     def _cooldown_get_period( self ):
-        return int( time.mktime(datetime.datetime.now().timetuple()) ) - self._cooldown_timestamp
+        if self._cooldown_timestamp:
+            return int( time.mktime(datetime.datetime.now().timetuple()) ) - self._cooldown_timestamp
+        return 0
 
     def _cooldown( self ):
         """
@@ -189,10 +191,8 @@ class FtpConnection:
     def login( self, timeout_seconds = None ):
         """
         Logs in to the ftp server.
-        Retries once.
         Using credentials if given.
         """
-
         # If timeout seconds is not an argument, use the default timeout.
         if not timeout_seconds:
             timeout_seconds = self._timeout_seconds
