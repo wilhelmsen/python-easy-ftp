@@ -66,7 +66,7 @@ def timeout(seconds):
     return wrapper
 
 # Retry decorator.
-def retry(number_of_retries, sleep_factor = 1):
+def retry( number_of_retries, sleep_factor = 1 ):
     """
     Decorator that retries to call a function if it fails with an exception.
     Retries the specified number of times.
@@ -87,7 +87,7 @@ def retry(number_of_retries, sleep_factor = 1):
             while counter <= number_of_retries:
                 LOG.debug( "Retry: Attempt %i/%i."%( counter, number_of_retries ) )
                 try:
-                    LOG.debug( "Retry (%i/%i): Calling" )
+                    LOG.debug( "Retry (%i/%i): Calling"%( counter, number_of_retries ) )
                     result = function( *args, **kwargs )
                     return result
                 except socket.error, e:
@@ -97,11 +97,11 @@ def retry(number_of_retries, sleep_factor = 1):
                     raise e
                 except Exception, e:
                     LOG.error( "Retry (%i/%i): Error in retry: %s."%( counter, number_of_retries, str(e)) )
-                    counter += 1
                     if sleep_factor > 0:
-                        sleeptime = sleep_factor * counter
+                        sleeptime = sleep_factor * counter + ( sleep_factor * (counter-1) * 10 )
                         LOG.debug( "Retry (%i/%i): Sleeping before retrying: %i second(s)."%( counter, number_of_retries, sleeptime ))
                         time.sleep( sleeptime )
+                    counter += 1
             raise RetryError( "Retry: Failed %i times."%( number_of_retries ) )
         return inner
     return wrapper
