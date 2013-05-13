@@ -85,22 +85,22 @@ def retry(number_of_retries, sleep_factor = 1):
         def inner(*args, **kwargs):
             counter = 1
             while counter <= number_of_retries:
-                LOG.debug("Retry: Attempt %i/%i."%( counter, number_of_retries))
+                LOG.debug( "Retry: Attempt %i/%i."%( counter, number_of_retries ) )
                 try:
-                    LOG.debug("Retry: Calling")
+                    LOG.debug( "Retry (%i/%i): Calling" )
                     result = function( *args, **kwargs )
                     return result
                 except socket.error, e:
                     # Most likely because the session has timed out, or something alike.
                     # The solution seem to be to relogin. No need to continue.
-                    LOG.debug( "Socket error, %s. Will probably need to relogin. Will not retry using the decorator."%( str(e) ) )
+                    LOG.debug( "Retry (%i/%i): Socket error, %s. Will probably need to relogin. Will not retry using the decorator."%( counter, number_of_retries, str(e) ) )
                     raise e
                 except Exception, e:
-                    LOG.error( "Retry: Error in retry: %s."%(str(e)) )
+                    LOG.error( "Retry (%i/%i): Error in retry: %s."%( counter, number_of_retries, str(e)) )
                     counter += 1
                     if sleep_factor > 0:
-                        sleeptime = sleep_factor*counter
-                        LOG.debug( "Retry: Sleeping before retrying: %i second(s)."%( sleeptime ))
+                        sleeptime = sleep_factor * counter
+                        LOG.debug( "Retry (%i/%i): Sleeping before retrying: %i second(s)."%( counter, number_of_retries, sleeptime ))
                         time.sleep( sleeptime )
             raise RetryError( "Retry: Failed %i times."%( number_of_retries ) )
         return inner
@@ -108,6 +108,10 @@ def retry(number_of_retries, sleep_factor = 1):
 
 
 class FtpConnection:
+    """
+    The class that creates the ftp-connection.
+    """
+
     def __init__(self, ftp_remote_address, username=None, password=None, timeout_seconds=0, number_of_retries=0, cooldown_seconds = None ):
         """
         The constructor of the ftp connection.
@@ -368,6 +372,13 @@ class FtpConnection:
             return False
         # Setup ends.
 
+        try:
+            if download_using_urllib2( self, remote_file_address, destination_filename, LOG ):
+                return True
+        except Exception, e:
+            LOG.error( "Failed downloading using urllib2: %s"%(str(e)) )
+            LOG.error( "Will try with ftplib." )
+            
         # Commanding the work done!!!
         if not hasattr( self, 'ftp' ) or self.ftp == None:
             self.setup()
@@ -389,10 +400,7 @@ class FtpConnection:
                 raise e
         except Exception, e:
             LOG.error( e )
-            LOG.error( "Failed downloading '%s' using ftplib. Trying with urllib2."%( remote_file_address ) )
-
-        if download_using_urllib2( self, remote_file_address, destination_filename, LOG ):
-            return True
+            LOG.error( "Failed downloading '%s' using ftplib."%( remote_file_address ) )
 
         LOG.warning( "*"*50 )
         LOG.error( "FAILED: Downloading '%s' failed permanentely."%( remote_file_address ) )
@@ -488,11 +496,7 @@ class FtpConnection:
         Gets a list of files for a specific path. If path is not given,
         the files in the root path of the full ftp address is returned.
         """
-        filenames = self.get_entries_starting_with( "-", path, timeout_seconds = timeout_seconds )
-        for item_to_remove in [".", ".."]:
-            while item_to_remove in filenames:
-                filenames.remove( item_to_remove )
-        return filenames
+        return self.get_entries_starting_with( "-", path, timeout_seconds = timeout_seconds )
 
     def get_links( self, path=None, timeout_seconds = None ):
         """
@@ -537,6 +541,9 @@ class FtpConnection:
             """
             self._cooldown()
             try:
+                # Make sure we are logged in.
+                self.setup()
+
                 prev_working_dir = None
                 if path:
                     prev_working_dir = self.ftp.pwd()
