@@ -13,7 +13,7 @@ Code example::
 
     import easy_ftp
     
-    with easy_ftp.FtpConnection( "ftp://<ftp host name>/ftp/root/path" ) as ftp:
+    with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path" ) as ftp:
         directories = ftp.get_directories()
         files = ftp.get_filenames()
         links = ftp.get_links()
@@ -27,15 +27,15 @@ When downloading files, both relative and absolute paths can be used. E.g. both 
 
     import easy_ftp
      
-    with easy_ftp.FtpConnection( "ftp://<ftp host name>/ftp/root/path" ) as ftp:
+    with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path" ) as ftp:
         ftp.download_file( "/ftp/root/path/fish.txt", destination_filename ):
         ftp.download_file( "fish.txt", destination_filename ):
      
-Also, these should be the same::
+Also, the two filenames in the following example should be the same::
 
     import easy_ftp
 
-    with easy_ftp.FtpConnection( "ftp://<ftp host name>/ftp/root/path" ) as ftp:
+    with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path" ) as ftp:
     	 filenames_1 = ftp.get_filenames( "/ftp/root/path/with/fish/file/" )
          filenames_2 = ftp.get_filenames( "with/fish/file/" )
 
