@@ -23,23 +23,23 @@ Source: https://github.com/wilhelmsen/python-easy-ftp
 Examples:
     import easy_ftp
     
-    with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path" ) as ftp:
+    with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path") as ftp:
         directories = ftp.get_directories()
         files = ftp.get_filenames()
         links = ftp.get_links()
         
-        if ftp.download_file( "/<some dir path>/<filename>", destination_filename ):
+        if ftp.download_file( "/<some dir path>/<filename>", destination_filename):
             print "Files was downloaded."
         else:
             print "File was not downloaded."
 
-    with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path" ) as ftp:
-        ftp.download_file( "/ftp/root/path/fish.txt", destination_filename ):
-        ftp.download_file( "fish.txt", destination_filename ):
+    with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path") as ftp:
+        ftp.download_file( "/ftp/root/path/fish.txt", destination_filename):
+        ftp.download_file( "fish.txt", destination_filename):
 
-    with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path" ) as ftp:
-    	 filenames_1 = ftp.get_filenames( "/ftp/root/path/with/fish/file/" )
-         filenames_2 = ftp.get_filenames( "with/fish/file/" )
+    with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path") as ftp:
+    	 filenames_1 = ftp.get_filenames( "/ftp/root/path/with/fish/file/")
+         filenames_2 = ftp.get_filenames( "with/fish/file/")
 
 
 """
@@ -136,6 +136,34 @@ def retry(number_of_retries, sleep_factor = 1):
     return wrapper
 
 
+class FtpEntry(object):
+    """
+    Object holding the ftp entry, e.g. a file, a directory or a link.
+    """
+    def __init__(self, content_line, remote_dir):
+        assert(remote_dir != None)
+        self.remote_dir = remote_dir
+
+        LOG.debug("'%s'"%content_line)
+        # content e.g.:
+        # '-rw-r-----   1 ftpadm   marnet         0 Mar  9 08:13 .notar'
+        # 'drwxr-x---+  2 ftpadm   marnet         7 Sep 24 13:27 Data00'
+        # 'drwxr-x---+  2 ftpadm   marnet         9 Sep 24 13:27 Data99'
+        # '-rw-r-----   1 ftpadm   marnet   1734480 Mar  9 08:01 arko.dat'
+        # 'drwxrwxr-x   2 12546    101       159744 Mar 13 21:51 2012.354'
+        line_parts = content_line.split(None, 10)
+        self.owner = line_parts[2]
+        self.group = line_parts[3]
+        self.size = long(line_parts[4])
+        self.name = line_parts[-1]
+        self.type = line_parts[0][0]
+
+    def __str__(self):
+        return os.path.join(self.remote_dir, self.name)
+    
+    def __repr__(self):
+        return self.__str__()
+
 class FTP:
     """
     The class that creates the ftp-connection.
@@ -162,6 +190,7 @@ class FTP:
         self._cooldown_timestamp = None
         
         # Login.
+        # Sets the ftp variable.
         self.setup()
 
         LOG.debug("Changing remote path to %s."%(self.root_path))
@@ -173,12 +202,17 @@ class FTP:
             raise e
 
     def setup(self):
-        # Setting up timeout and so. This is where the work is done.
+        """
+        Setting the self.ftp variable. Logging in.
+
+        Normally stuff like this is done in __init__, but we need to be able to set
+        the decorator arguments.
+        """
         @retry(self._number_of_retries)
-        @timeout(self._timeout_seconds + self._cooldown_get_period())
+        @timeout(self._timeout_seconds + self._cooldown_get_seconds_since_last_timestamp())
         def _setup(self):
             LOG.debug("Setting up %s."%(self.host))
-            self.ftp =  ftplib.FTP(self.host)
+            self.ftp = ftplib.FTP(self.host)
             LOG.debug("Logging in to %s."%(self.host))
             self.login()
 
@@ -192,14 +226,21 @@ class FTP:
             _setup(self)
             
 
-    def _cooldown_get_period(self):
+    def _cooldown_get_seconds_since_last_timestamp(self):
+        """
+        Internal method.
+        Gets the number of seconds the program has been cooling down.
+        I.e. the number of seconds since the last cooldown timestamp was set.
+        """
         if self._cooldown_timestamp:
-            return int(time.mktime(datetime.datetime.now().timetuple())) - self._cooldown_timestamp
+            return int(time.time()) - self._cooldown_timestamp
         return 0
 
     def _cooldown(self):
         """
         Internal method.
+        Cools down. I.e. makes sure the program sleeps until the cooldown period has passed.
+        
         If self._cooldown_seconds is set in the constructor, this ftp client, will cool down for the
         number of speficied seconds, since last request, before making a new request.
 
@@ -209,11 +250,11 @@ class FTP:
         """
         if self._cooldown_seconds:
             if self._cooldown_timestamp:
-                time_since_last_action_seconds = self._cooldown_get_period()
+                time_since_last_action_seconds = self._cooldown_get_seconds_since_last_timestamp()
                 sleeptime_seconds = self._cooldown_seconds - time_since_last_action_seconds
                 if sleeptime_seconds > 0:
                     LOG.debug("Cooling down for %i second(s)"%(sleeptime_seconds)) 
-                    time.sleep(sleeptime_seconds )
+                    time.sleep(sleeptime_seconds)
 
 
     def _cooldown_set_timestamp(self):
@@ -223,7 +264,7 @@ class FTP:
         """
         if self._cooldown_seconds:
             LOG.debug("Setting cooldown timestamp.")
-            self._cooldown_timestamp = int(time.mktime(datetime.datetime.now().timetuple()))
+            self._cooldown_timestamp = int(time.time())
 
     def login(self, timeout_seconds = None):
         """
@@ -235,7 +276,7 @@ class FTP:
             timeout_seconds = self._timeout_seconds
 
         @retry(self._number_of_retries)
-        @timeout(timeout_seconds + self._cooldown_get_period() )
+        @timeout(timeout_seconds + self._cooldown_get_seconds_since_last_timestamp())
         def _login(self, LOG):
             """
             Internal function to log in to the ftp-server.
@@ -284,43 +325,60 @@ class FTP:
         LOG.debug("Logging in.")
         _login(self, LOG)
 
+    def get_file_size(self, remote_file_address, timeout_seconds = None):
+        remote_dir = os.path.dirname(remote_file_address)
+        basename = os.path.basename(remote_file_address)
+        for entry in self.get_entries(remote_dir, timeout_seconds = timeout_seconds):
+            if entry.name == basename:
+                if entry.type == "-":
+                    return entry.size
+                else:
+                    raise EasyFtpError("%s is not a file. Type: %s."%(entry.name, entry.type))
+        raise EasyFtpError("File, '%s' not found."%(remote_file_address))
+
 
     def download_file(self, remote_file_address, destination_filename, timeout_seconds=None):
         """
-        This became more messy than expected... Have to go on for now...
+        First trying to download a file using url2lib.
+        If this fails, trying using ftplib.
 
-        Downloading a file using ftplib. If fails, trying url2lib.
-        Retrying if specified in the constructor.
+        Retrying if specified in the initializer.
+
+        TODO: It became a bit too messy.
+        TODO: What to do if the file already exists?
         """
         LOG.info("\n")
         LOG.info("%s %s %s"%("*"*10, remote_file_address, "*"*10))
 
+        # Making sure the timeout is not negative.
         if not timeout_seconds:
+            print "*"*100
+            print timeout_seconds
+            print "*"*100
             timeout_seconds = self._timeout_seconds
-
-        assert(timeout_seconds > 0)
-
+        assert(timeout_seconds >= 0)
+        
+        # Internal method. This is the one that downloads from the ftp.
         @retry(self._number_of_retries)
-        @timeout(timeout_seconds + self._cooldown_get_period())
+        @timeout(timeout_seconds + self._cooldown_get_seconds_since_last_timestamp())
         def download_using_ftplib(self, remote_file_address, destination_filename, LOG):
             LOG.debug("Using ftplib: Downloading '%s' to '%s'."%(remote_file_address, destination_filename))
             destination_filename_tmp = "%s.tmp"%(destination_filename)
-            LOG.debug("Tmp filename for '%s': '%s'."%(destination_filename, destination_filename_tmp) )
+            LOG.debug("Tmp filename for '%s': '%s'."%(destination_filename, destination_filename_tmp))
         
             # Make sure the temp file does not exist.
             if os.path.isfile(destination_filename_tmp):
-                LOG.debug("The tmp destination file '%s' exists already. Deleting it.."%(destination_filename_tmp ))
+                LOG.debug("The tmp destination file '%s' exists already. Deleting it.."%(destination_filename_tmp))
                 os.remove(destination_filename_tmp)
 
             # Download the file.
-
             self._cooldown()
             try:
-                LOG.debug("Trying to download: '%s'."%(remote_file_address ))
+                LOG.debug("Trying to download: '%s'."%(remote_file_address))
                 with open(destination_filename_tmp, 'wb') as local_file:
-                    self.ftp.retrbinary("RETR %s"%(remote_file_address), local_file.write )
+                    self.ftp.retrbinary("RETR %s"%(remote_file_address), local_file.write)
             except Exception, e:
-                LOG.error("Failed downloading '%s'."%(remote_file_address ))
+                LOG.error("Failed downloading '%s'."%(remote_file_address))
                 LOG.error(e)
                 # Exception is caught by the retry decorator.
                 raise e
@@ -330,21 +388,20 @@ class FTP:
             # Checking that the tmp filename has a size larger than 0.
             # If it does rename the tmp file to the destination filename.
             if os.path.isfile(destination_filename_tmp):
-                if os.path.getsize(destination_filename_tmp) == 0:
-                    LOG.warning("'%s' has size 0."%(destination_filename_tmp))
-                else:
+                remote_file_size = self.get_file_size(remote_file_address)
+                local_file_size = os.path.getsize(destination_filename_tmp) 
+                if local_file_size == remote_file_size:
                     LOG.debug("Moving '%s' to '%s'."%(destination_filename_tmp, destination_filename))
                     shutil.move(destination_filename_tmp, destination_filename)
-                    LOG.info("*"*50)
                     LOG.info("Ftplib: File '%s' saved."%(destination_filename))
-                    LOG.info("*"*50)
-                    LOG.info("")
                     return True
+                else:
+                    LOG.error("Filesize does not match. Remote: %s. Local: %s"%(remote_file_size, local_file_size))
             LOG.warning("Failed to download '%s'."%(destination_filename_tmp))
             return False
 
         @retry(self._number_of_retries)
-        @timeout(timeout_seconds + self._cooldown_get_period())
+        @timeout(timeout_seconds + self._cooldown_get_seconds_since_last_timestamp())
         def download_using_urllib2(self, remote_file_address, destination_filename, LOG):
             LOG.debug("Using urllib2: Downloading '%s' to '%s'."%(remote_file_address, destination_filename))
             LOG.debug("Building remote url...")
@@ -367,7 +424,7 @@ class FTP:
 
             # Temp destination filename
             destination_filename_tmp = "%s.tmp"%(destination_filename)
-            LOG.debug("Tmp filename for '%s': '%s'."%(destination_filename, destination_filename_tmp) )
+            LOG.debug("Tmp filename for '%s': '%s'."%(destination_filename, destination_filename_tmp))
 
             # Downloading the file, using urllib2.
             LOG.debug("Downloading file, '%s' to '%s' using urllib2."%(remote_url, destination_filename_tmp))
@@ -378,7 +435,7 @@ class FTP:
                     with open(destination_filename_tmp, 'wb') as local_file:
                         LOG.debug("Local file: '%s'."%(destination_filename_tmp))
                         shutil.copyfileobj(remote_file, local_file)
-                        LOG.debug("File '%s' saved."%(destination_filename_tmp) )
+                        LOG.debug("File '%s' saved."%(destination_filename_tmp))
             except Exception, e:
                 LOG.error(e)
                 # Error is caught by the retry decorator.
@@ -389,20 +446,19 @@ class FTP:
             # Checking that the tmp filename has a size larger than 0.
             # If it does rename the tmp file to the destination filename.
             if os.path.isfile(destination_filename_tmp):
-                if os.path.getsize(destination_filename_tmp) > 0:
+                remote_file_size = self.get_file_size(remote_file_address)
+                local_file_size = os.path.getsize(destination_filename_tmp) 
+                if local_file_size == remote_file_size:
                     LOG.debug("Moving '%s' to '%s'."%(destination_filename_tmp, destination_filename))
                     shutil.move(destination_filename_tmp, destination_filename)
-                    LOG.info("*"*50)
                     LOG.info("Urllib2: File '%s' saved."%(destination_filename))
-                    LOG.info("*"*50)
-                    LOG.info("")
                     return True
                 else:
                     LOG.warning("'%s' has size 0."%(destination_filename_tmp))
             LOG.warning("Failed to download '%s'."%(destination_filename_tmp))
             return False
         # Setup ends.
-
+        
         try:
             if download_using_urllib2(self, remote_file_address, destination_filename, LOG):
                 return True
@@ -416,6 +472,8 @@ class FTP:
 
         try: 
             if download_using_ftplib(self, remote_file_address, destination_filename, LOG):
+                # Everything went well
+                LOG.debug("%s downloaded to %s."%(remote_file_address, destination_filename))
                 return True
         except socket.error, e:
             # If the error is a socket error, the retry decorator will not retry, because the connection
@@ -433,12 +491,12 @@ class FTP:
             LOG.error(e)
             LOG.error("Failed downloading '%s' using ftplib."%(remote_file_address))
 
+        # If we reach this point. Everything in the whole world has gone wrong...
         LOG.warning("*"*50)
         LOG.error("FAILED: Downloading '%s' failed permanentely."%(remote_file_address))
         LOG.error("Moving on.")
         LOG.warning("*"*50)
         return False
-
 
     @staticmethod
     def split_ftp_host_and_path(ftp_remote_address):
@@ -520,39 +578,38 @@ class FTP:
         Gets a list of directories for a specific path. If path is not given,
         the directories in the root path of the full ftp address is returned.
         """
-        return self.get_entries_starting_with("d", path, timeout_seconds = timeout_seconds)
+        return [ x for x in self.get_entries(path, timeout_seconds = timeout_seconds) if x.type == "d"]
 
     def get_filenames(self, path=None, timeout_seconds = None):
         """
         Gets a list of files for a specific path. If path is not given,
         the files in the root path of the full ftp address is returned.
         """
-        return self.get_entries_starting_with("-", path, timeout_seconds = timeout_seconds)
+        return [ x for x in self.get_entries(path, timeout_seconds = timeout_seconds) if x.type == "-"]
 
     def get_links(self, path=None, timeout_seconds = None):
         """
         Gets a list of links for a specific path. If path is not given,
         the links in the root path of the full ftp address is returned.
         """
-        return self.get_entries_starting_with("l", path, timeout_seconds = timeout_seconds)
+        return [ x for x in self.get_entries(path, timeout_seconds = timeout_seconds) if x.type == "l"]
 
-    def get_entries_starting_with(self, startswith, path = None, timeout_seconds = None):
+    def get_entries(self, path = None, timeout_seconds = None):
         """
         Parses the list content string and returns a list of all the entries starting with
         "startswith".
-        """
 
+        If path is not set, remote current working directory is used.
+        """
         entries = []
-        contents = self.list_contents(path, timeout_seconds=timeout_seconds)
-        for content in contents:
-            # TODO: Return an object containing some more information about the files / directories / links.
-            # There is more info in the string, which e.g. could be parsed into an object.
-            if content.startswith(startswith):
-                # content e.g.: drwxrwxr-x    2 12546    101        159744 Mar 13 21:51 2012.354
-                entries.append(content.split(" ")[-1])
+        content_lines, remote_path = self.list_contents(path, timeout_seconds=timeout_seconds)
+        LOG.debug("Ftp-content:")
+        for content_line in content_lines:
+            if content_line[0] in ["-", "d", "l"]: # File, directory, link.
+                entries.append(FtpEntry(content_line, remote_path))
         return entries
 
-    def list_contents(self, path=None, timeout_seconds = None):
+    def list_contents(self, remote_path=None, timeout_seconds = None):
         """
         Lists the contents for a given path.
         When the contents has been listed, the working directory is 
@@ -562,48 +619,53 @@ class FTP:
             timeout_seconds = self._timeout_seconds
 
         @retry(self._number_of_retries)
-        @timeout(timeout_seconds + self._cooldown_get_period())
-        def _list_contents(self, path=None):
+        @timeout(timeout_seconds + self._cooldown_get_seconds_since_last_timestamp())
+        def _list_contents(self, remote_path=None):
             """
-            Changes the directory to the path, if given, and list all the contents in that directory. Then automatically
+            Changes the directory to the remote_path, if given, and list all the contents in that directory. Then automatically
             changes the working directory back to the ftp address root.
             
             Returns a list of lines that the ftp server returns.
             """
+            prev_remote_working_dir = self.ftp.pwd()
+            if remote_path == None:
+                remote_path = prev_remote_working_dir
             self._cooldown()
             try:
                 # Make sure we are logged in.
                 self.setup()
 
-                prev_working_dir = None
-                if path:
-                    prev_working_dir = self.ftp.pwd()
-                    LOG.debug("Working dir: '%s'."%(prev_working_dir))
+                if "ftp://" in remote_path:
+                    remote_path = remote_path.split("ftp://")[1]
 
-                    LOG.debug("Changing path to %s"%(path))
-                    self.ftp.cwd(path)
+                if remote_path:
+                    prev_remote_working_dir = self.ftp.pwd()
+                    LOG.debug("Working dir: '%s'."%(prev_remote_working_dir))
+
+                    LOG.debug("Changing path to %s"%(remote_path))
+                    self.ftp.cwd(remote_path)
                 contents = []
                 self.ftp.retrlines("LIST", contents.append)
-                return contents
+                return contents, remote_path
             finally:
-                if prev_working_dir != None:
-                    LOG.debug("Changing back to previous working dir: '%s'."%(prev_working_dir))
-                    self.ftp.cwd(prev_working_dir)
+                if prev_remote_working_dir != None:
+                    LOG.debug("Changing back to previous working dir: '%s'."%(prev_remote_working_dir))
+                    self.ftp.cwd(prev_remote_working_dir)
                 self._cooldown_set_timestamp()
 
 
+        # Calling the internal method.
         try:
-            return _list_contents(self, path)
+            return _list_contents(self, remote_path)
         except socket.error, e:
-            # Most likely because the session has timed out, or something alike.
+            # Most likely (by experience) because the session has timed out, or something alike.
             # The solution seem to be to relogin.
             LOG.error("Failed listing contentes. Retrying.")
             LOG.error(e)
             LOG.error("Trying to log in again.")
             self.login()
-            
             LOG.error("Trying to list contents again.")
-            return _list_contents(self, path)
+            return _list_contents(self, remote_path)
 
 
 
@@ -625,31 +687,25 @@ if __name__ == "__main__":
         if not os.path.isdir(dir_path):
             raise argparse.ArgumentTypeError("'%s' does not exist. Please specify save directory!"%(dir_path))
         return dir_path
-
+    
     parser = argparse.ArgumentParser(description='Connect to an ftp server and list the files, directories and links in the directory.')
-    parser.add_argument("remote_source_address"
-                         , type=str
-                         , help='Remote source adress, e.g. ftp://example.com/some/nice/path'
-                        )
-    parser.add_argument('-u', '--username'
-                         , type=str
-                         , help='Some directory, that exists, if set (optional)...'
-                        )
-    parser.add_argument('-p', '--password'
-                         , type=str
-                         , help="Some string."
-                        )
-    parser.add_argument('-d', '--debug', action='store_true', help="Output debugging information.")
-    parser.add_argument('--log_filename', type=str, help="File used to output logging information.")
-
+    parser.add_argument("remote_source_address", type=str, help='Remote source adress, e.g. ftp://example.com/some/nice/path')
+    parser.add_argument('-u', '--username', type=str, help='Some directory, that exists, if set (optional)...')
+    parser.add_argument('-p', '--password', type=str, help="Some string.")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-d', '--debug', action='store_true', help="Output debugging information.")
+    group.add_argument('-v', '--verbose', action='store_true', help="Output info.")
+    parser.add_argument('--log-filename', type=str, help="File used to output logging information.")
     args = parser.parse_args()
 
     if args.debug:
-        logging.basicConfig(filename=args.log_filename, level=logging.DEBUG)
+        logging.basicConfig( filename=args.log_filename, level=logging.DEBUG )
+    elif args.verbose:
+        logging.basicConfig( filename=args.log_filename, level=logging.INFO )
     else:
-        logging.basicConfig(filename=args.log_filename, level=logging.INFO)
+        logging.basicConfig( filename=args.log_filename, level=logging.WARNING )
 
-    if args.username and not args.password:
+    if(args.username and not args.password) or (args.password and not args.username):
         raise argparse.ArgumentTypeError("Both username and password must be set")
     
     # Output what is in the args variable.
