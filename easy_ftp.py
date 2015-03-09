@@ -352,9 +352,6 @@ class FTP:
 
         # Making sure the timeout is not negative.
         if not timeout_seconds:
-            print "*"*100
-            print timeout_seconds
-            print "*"*100
             timeout_seconds = self._timeout_seconds
         assert(timeout_seconds >= 0)
         
@@ -389,7 +386,7 @@ class FTP:
             # If it does rename the tmp file to the destination filename.
             if os.path.isfile(destination_filename_tmp):
                 remote_file_size = self.get_file_size(remote_file_address)
-                local_file_size = os.path.getsize(destination_filename_tmp) 
+                local_file_size = os.path.getsize(destination_filename_tmp)
                 if local_file_size == remote_file_size:
                     LOG.debug("Moving '%s' to '%s'."%(destination_filename_tmp, destination_filename))
                     shutil.move(destination_filename_tmp, destination_filename)
@@ -458,6 +455,14 @@ class FTP:
             LOG.warning("Failed to download '%s'."%(destination_filename_tmp))
             return False
         # Setup ends.
+
+        # Check if file already exists?
+        if os.path.isfile(destination_filename):
+            remote_file_size = self.get_file_size(remote_file_address)
+            local_file_size = os.path.getsize(destination_filename)
+            if remote_file_size == local_file_size:
+                LOG.info("File already exists and has the same filesize as the remote file. Assuming nothing has happend. Returning.")
+                return True
         
         try:
             if download_using_urllib2(self, remote_file_address, destination_filename, LOG):
