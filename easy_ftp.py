@@ -24,9 +24,9 @@ Examples:
     import easy_ftp
     
     with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path") as ftp:
-        directories = ftp.get_directories()
-        files = ftp.get_filenames()
-        links = ftp.get_links()
+        directories = ftp.get_directory_names()
+        files = ftp.get_file_names()
+        links = ftp.get_link_names()
         
         if ftp.download_file( "/<some dir path>/<filename>", destination_filename):
             print "Files was downloaded."
@@ -38,8 +38,8 @@ Examples:
         ftp.download_file( "fish.txt", destination_filename):
 
     with easy_ftp.FTP( "ftp://<ftp host name>/ftp/root/path") as ftp:
-    	 filenames_1 = ftp.get_filenames( "/ftp/root/path/with/fish/file/")
-         filenames_2 = ftp.get_filenames( "with/fish/file/")
+    	 filenames_1 = ftp.get_file_names( "/ftp/root/path/with/fish/file/")
+         filenames_2 = ftp.get_file_names( "with/fish/file/")
 
 
 """
@@ -161,8 +161,6 @@ class FtpEntry(object):
     def __str__(self):
         return os.path.join(self.remote_dir, self.name)
     
-    def __repr__(self):
-        return self.__str__()
 
 class FTP:
     """
@@ -326,6 +324,9 @@ class FTP:
         _login(self, LOG)
 
     def get_file_size(self, remote_file_address, timeout_seconds = None):
+        """
+        Gets the remote file size.
+        """
         remote_dir = os.path.dirname(remote_file_address)
         basename = os.path.basename(remote_file_address)
         for entry in self.get_entries(remote_dir, timeout_seconds = timeout_seconds):
@@ -461,7 +462,7 @@ class FTP:
             remote_file_size = self.get_file_size(remote_file_address)
             local_file_size = os.path.getsize(destination_filename)
             if remote_file_size == local_file_size:
-                LOG.info("File already exists and has the same filesize as the remote file. Assuming nothing has happend. Returning.")
+                LOG.info("File '%s' already exists and has the same filesize as the remote file. Assuming nothing has happend. Returning."%(remote_file_address))
                 return True
         
         try:
@@ -497,7 +498,6 @@ class FTP:
             LOG.error("Failed downloading '%s' using ftplib."%(remote_file_address))
 
         # If we reach this point. Everything in the whole world has gone wrong...
-        LOG.warning("*"*50)
         LOG.error("FAILED: Downloading '%s' failed permanentely."%(remote_file_address))
         LOG.error("Moving on.")
         LOG.warning("*"*50)
@@ -537,7 +537,7 @@ class FTP:
 
         Example::
             with FTP(<ftp_address>) as ftp:
-                print ftp.get_files()
+                print ftp.get_file_names()
 
         Here, the "ftp" becomes the "self".
         """
@@ -578,26 +578,26 @@ class FTP:
                 LOG.warning(e)
                 LOG.warning(sys.exc_info()[0])
 
-    def get_directories(self, path=None, timeout_seconds = None):
+    def get_directory_names(self, path=None, timeout_seconds = None):
         """
         Gets a list of directories for a specific path. If path is not given,
         the directories in the root path of the full ftp address is returned.
         """
-        return [ x for x in self.get_entries(path, timeout_seconds = timeout_seconds) if x.type == "d"]
+        return [ os.path.join(x.remote_dir, x.name) for x in self.get_entries(path, timeout_seconds = timeout_seconds) if x.type == "d"]
 
-    def get_filenames(self, path=None, timeout_seconds = None):
+    def get_file_names(self, path=None, timeout_seconds = None):
         """
         Gets a list of files for a specific path. If path is not given,
         the files in the root path of the full ftp address is returned.
         """
-        return [ x for x in self.get_entries(path, timeout_seconds = timeout_seconds) if x.type == "-"]
+        return [ os.path.join(x.remote_dir, x.name) for x in self.get_entries(path, timeout_seconds = timeout_seconds) if x.type == "-"]
 
-    def get_links(self, path=None, timeout_seconds = None):
+    def get_link_names(self, path=None, timeout_seconds = None):
         """
         Gets a list of links for a specific path. If path is not given,
         the links in the root path of the full ftp address is returned.
         """
-        return [ x for x in self.get_entries(path, timeout_seconds = timeout_seconds) if x.type == "l"]
+        return [ os.path.join(x.remote_dir, x.name) for x in self.get_entries(path, timeout_seconds = timeout_seconds) if x.type == "l"]
 
     def get_entries(self, path = None, timeout_seconds = None):
         """
@@ -717,9 +717,9 @@ if __name__ == "__main__":
     LOG.debug(args)
 
     with FTP(args.remote_source_address, args.username, args.password) as ftp:
-        directories = ftp.get_directories()
-        files = ftp.get_filenames()
-        links = ftp.get_links()
+        directories = ftp.get_directory_names()
+        files = ftp.get_file_names()
+        links = ftp.get_link_names()
 
         print "Remote root directory:", ftp.root_path
         print "Number of directories:", len(directories)
